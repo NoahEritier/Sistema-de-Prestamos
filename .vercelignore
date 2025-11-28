@@ -1,0 +1,11 @@
+# Archivos a ignorar en Vercel
+node_modules
+.angular
+.vscode
+.idea
+*.log
+.DS_Store
+Thumbs.db
+coverage
+dist
+

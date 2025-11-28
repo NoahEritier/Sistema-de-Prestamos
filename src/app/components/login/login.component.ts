@@ -28,9 +28,11 @@ export class LoginComponent implements OnInit, OnDestroy {
     private router: Router,
     private toastService: ToastService
   ) {
-    if (this.authService.isAuthenticated()) {
-      this.router.navigate(['/']);
-    }
+    this.authService.isAuthenticated().subscribe(isAuth => {
+      if (isAuth) {
+        this.router.navigate(['/']);
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -99,24 +101,31 @@ export class LoginComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Intentar login (sin delay artificial)
-    const result = this.authService.login(this.username.trim(), this.password);
-    
-    if (result.success) {
-      this.toastService.success('Inicio de sesión exitoso');
-      this.router.navigate(['/']);
-    } else {
-      this.error = result.message || 'Error al iniciar sesión';
-      this.loading = false;
-      
-      if (result.lockedUntil) {
-        this.lockedUntil = result.lockedUntil;
-        this.startCountdown();
-        this.toastService.error(this.error);
-      } else {
+    // Intentar login
+    this.authService.login(this.username.trim(), this.password).subscribe({
+      next: (result) => {
+        if (result.success) {
+          this.toastService.success('Inicio de sesión exitoso');
+          this.router.navigate(['/']);
+        } else {
+          this.error = result.message || 'Error al iniciar sesión';
+          this.loading = false;
+          
+          if (result.lockedUntil) {
+            this.lockedUntil = result.lockedUntil;
+            this.startCountdown();
+            this.toastService.error(this.error);
+          } else {
+            this.toastService.error(this.error);
+          }
+        }
+      },
+      error: (error) => {
+        this.error = 'Error al conectar con el servidor';
+        this.loading = false;
         this.toastService.error(this.error);
       }
-    }
+    });
   }
 
   formatTime(seconds: number): string {
