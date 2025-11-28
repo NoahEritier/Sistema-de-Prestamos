@@ -1,4 +1,6 @@
 import { Injectable } from '@angular/core';
+import { Observable, forkJoin, of } from 'rxjs';
+import { map, switchMap, catchError } from 'rxjs/operators';
 import { StorageService } from './storage.service';
 import { Loan, Cuota } from '../models/loan.model';
 import { Payment } from '../models/payment.model';
@@ -9,9 +11,11 @@ import { Client } from '../models/client.model';
 })
 export class LoanService {
   constructor(private storageService: StorageService) {
-    this.checkVencidos();
-    // Verificar vencidos cada hora
-    setInterval(() => this.checkVencidos(), 3600000);
+    // Verificar vencidos periódicamente
+    this.checkVencidos().subscribe();
+    setInterval(() => {
+      this.checkVencidos().subscribe();
+    }, 3600000);
   }
 
   calculatePaymentAmount(monto: number, tasaInteres: number, cantidadCuotas: number, tipoPlazo: 'semanal' | 'quincenal' | 'mensual'): number {
@@ -66,7 +70,7 @@ export class LoanService {
     return cuotas;
   }
 
-  createLoan(loan: Omit<Loan, 'id' | 'montoPendiente' | 'cuotaMensual' | 'cuotasPagadas' | 'cuotas'>): Loan {
+  createLoan(loan: Omit<Loan, 'id' | 'montoPendiente' | 'cuotaMensual' | 'cuotasPagadas' | 'cuotas'>): Observable<Loan> {
     const montoCuota = this.calculatePaymentAmount(loan.monto, loan.tasaInteres, loan.cantidadCuotas, loan.tipoPlazo);
     const cuotas = this.generateCuotas(loan.fechaInicio, loan.cantidadCuotas, loan.tipoPlazo, montoCuota);
     
@@ -84,136 +88,166 @@ export class LoanService {
       fechaVencimiento
     };
     
-    this.storageService.addLoan(newLoan);
-    return newLoan;
+    return this.storageService.addLoan(newLoan).pipe(
+      map(() => newLoan)
+    );
   }
 
-  checkVencidos(): void {
-    const loans = this.storageService.getLoans();
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    
-    loans.forEach(loan => {
-      if (loan.estado === 'activo' || loan.estado === 'vencido') {
-        // Asegurar que el array de cuotas existe
-        if (!loan.cuotas) {
-          loan.cuotas = [];
-        }
+  checkVencidos(): Observable<void> {
+    return this.storageService.getLoans().pipe(
+      map((loans: Loan[]) => {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
         
-        let tieneVencidas = false;
+        const loansToUpdate: Loan[] = [];
         
-        loan.cuotas.forEach(cuota => {
-          if (cuota.estado === 'pendiente') {
-            const fechaVenc = new Date(cuota.fechaVencimiento);
-            fechaVenc.setHours(0, 0, 0, 0);
+        loans.forEach((loan: Loan) => {
+          if (loan.estado === 'activo' || loan.estado === 'vencido') {
+            // Asegurar que el array de cuotas existe
+            if (!loan.cuotas) {
+              loan.cuotas = [];
+            }
             
-            if (fechaVenc < hoy) {
-              cuota.estado = 'vencida';
-              tieneVencidas = true;
+            let tieneVencidas = false;
+            
+            loan.cuotas.forEach((cuota: Cuota) => {
+              if (cuota.estado === 'pendiente') {
+                const fechaVenc = new Date(cuota.fechaVencimiento);
+                fechaVenc.setHours(0, 0, 0, 0);
+                
+                if (fechaVenc < hoy) {
+                  cuota.estado = 'vencida';
+                  tieneVencidas = true;
+                }
+              }
+            });
+            
+            if (tieneVencidas && loan.estado === 'activo') {
+              loan.estado = 'vencido';
+              loansToUpdate.push(loan);
             }
           }
         });
         
-        if (tieneVencidas && loan.estado === 'activo') {
-          loan.estado = 'vencido';
-          this.storageService.updateLoan(loan);
-        }
-      }
-    });
+        // Actualizar préstamos modificados
+        loansToUpdate.forEach((loan: Loan) => {
+          this.storageService.updateLoan(loan).subscribe();
+        });
+      }),
+      map(() => undefined)
+    );
   }
 
-  registerPayment(payment: Omit<Payment, 'id'>): void {
+  registerPayment(payment: Omit<Payment, 'id'>): Observable<void> {
     const newPayment: Payment = {
       ...payment,
       id: this.generateId()
     };
     
-    this.storageService.addPayment(newPayment);
-    
-    // Actualizar préstamo
-    const loan = this.storageService.getLoans().find(l => l.id === payment.prestamoId);
-    if (loan) {
-      // Asegurar que el array de cuotas existe
-      if (!loan.cuotas) {
-        loan.cuotas = [];
-      }
-      
-      loan.montoPendiente = Math.max(0, loan.montoPendiente - payment.monto);
-      
-      if (payment.tipo === 'cuota' && payment.numeroCuota) {
-        const cuota = loan.cuotas.find(c => c.numero === payment.numeroCuota);
-        if (cuota) {
-          cuota.estado = 'pagada';
-          cuota.fechaPago = payment.fecha;
-          cuota.montoPagado = payment.monto;
-          loan.cuotasPagadas = (loan.cuotasPagadas || 0) + 1;
+    return this.storageService.addPayment(newPayment).pipe(
+      switchMap(() => this.storageService.getLoans()),
+      switchMap((loans: Loan[]) => {
+        const loan = loans.find((l: Loan) => l.id === payment.prestamoId);
+        if (!loan) {
+          return of(undefined);
         }
-      } else if (payment.tipo === 'abono') {
-        // Para abonos, no se marca ninguna cuota específica como pagada
-        // pero se reduce el monto pendiente
-      } else if (payment.tipo === 'pago_completo') {
-        loan.cuotas.forEach(cuota => {
-          if (cuota.estado !== 'pagada') {
+        
+        // Asegurar que el array de cuotas existe
+        if (!loan.cuotas) {
+          loan.cuotas = [];
+        }
+        
+        loan.montoPendiente = Math.max(0, loan.montoPendiente - payment.monto);
+        
+        if (payment.tipo === 'cuota' && payment.numeroCuota) {
+          const cuota = loan.cuotas.find((c: Cuota) => c.numero === payment.numeroCuota);
+          if (cuota) {
             cuota.estado = 'pagada';
             cuota.fechaPago = payment.fecha;
-            cuota.montoPagado = cuota.monto;
+            cuota.montoPagado = payment.monto;
+            loan.cuotasPagadas = (loan.cuotasPagadas || 0) + 1;
           }
-        });
-        loan.cuotasPagadas = loan.cuotasTotales;
-      }
-      
-      if (loan.montoPendiente <= 0) {
-        loan.estado = 'completado';
-        loan.montoPendiente = 0;
-      } else {
-        // Verificar si aún hay cuotas vencidas
-        this.checkVencidos();
-      }
-      
-      this.storageService.updateLoan(loan);
-    }
+        } else if (payment.tipo === 'abono') {
+          // Para abonos, no se marca ninguna cuota específica como pagada
+          // pero se reduce el monto pendiente
+        } else if (payment.tipo === 'pago_completo') {
+          loan.cuotas.forEach((cuota: Cuota) => {
+            if (cuota.estado !== 'pagada') {
+              cuota.estado = 'pagada';
+              cuota.fechaPago = payment.fecha;
+              cuota.montoPagado = cuota.monto;
+            }
+          });
+          loan.cuotasPagadas = loan.cuotasTotales;
+        }
+        
+        if (loan.montoPendiente <= 0) {
+          loan.estado = 'completado';
+          loan.montoPendiente = 0;
+        }
+        
+        return this.storageService.updateLoan(loan).pipe(
+          map(() => undefined)
+        );
+      }),
+      catchError((error) => {
+        console.error('Error registrando pago:', error);
+        return of(undefined);
+      })
+    );
   }
 
-  getLoansByClient(clientId: string): Loan[] {
-    return this.storageService.getLoans().filter(l => l.clienteId === clientId);
+  getLoansByClient(clientId: string): Observable<Loan[]> {
+    return this.storageService.getLoans().pipe(
+      map((loans: Loan[]) => loans.filter((l: Loan) => l.clienteId === clientId))
+    );
   }
 
-  getLoansByClientId(clientId: string): Loan[] {
+  getLoansByClientId(clientId: string): Observable<Loan[]> {
     return this.getLoansByClient(clientId);
   }
 
-  getPaymentsByLoan(loanId: string): Payment[] {
-    return this.storageService.getPayments().filter(p => p.prestamoId === loanId);
+  getPaymentsByLoan(loanId: string): Observable<Payment[]> {
+    return this.storageService.getPayments().pipe(
+      map((payments: Payment[]) => payments.filter((p: Payment) => p.prestamoId === loanId))
+    );
   }
 
-  getDashboardMetrics() {
-    const loans = this.storageService.getLoans();
-    const payments = this.storageService.getPayments();
-    const clients = this.storageService.getClients();
+  getDashboardMetrics(): Observable<any> {
+    return forkJoin({
+      loans: this.storageService.getLoans(),
+      payments: this.storageService.getPayments(),
+      clients: this.storageService.getClients()
+    }).pipe(
+      map(({ loans, payments, clients }) => {
+        const totalPrestamos = loans.reduce((sum: number, l: Loan) => sum + l.monto, 0);
+        const totalPendiente = loans
+          .filter((l: Loan) => l.estado === 'activo')
+          .reduce((sum: number, l: Loan) => sum + l.montoPendiente, 0);
+        const totalRecuperado = payments.reduce((sum: number, p: Payment) => sum + p.monto, 0);
+        const prestamosActivos = loans.filter((l: Loan) => l.estado === 'activo').length;
+        const prestamosVencidos = loans.filter((l: Loan) => l.estado === 'vencido').length;
+        const clientesActivos = clients.filter((c: Client) => c.activo).length;
 
-    const totalPrestamos = loans.reduce((sum, l) => sum + l.monto, 0);
-    const totalPendiente = loans
-      .filter(l => l.estado === 'activo')
-      .reduce((sum, l) => sum + l.montoPendiente, 0);
-    const totalRecuperado = payments.reduce((sum, p) => sum + p.monto, 0);
-    const prestamosActivos = loans.filter(l => l.estado === 'activo').length;
-    const prestamosVencidos = loans.filter(l => l.estado === 'vencido').length;
-    const clientesActivos = clients.filter(c => c.activo).length;
+        return {
+          totalPrestamos,
+          totalPendiente,
+          totalRecuperado,
+          prestamosActivos,
+          prestamosVencidos,
+          clientesActivos,
+          totalClientes: clients.length,
+          totalPrestamosCount: loans.length
+        };
+      })
+    );
+  }
 
-    return {
-      totalPrestamos,
-      totalPendiente,
-      totalRecuperado,
-      prestamosActivos,
-      prestamosVencidos,
-      clientesActivos,
-      totalClientes: clients.length,
-      totalPrestamosCount: loans.length
-    };
+  refreshLoans(): Observable<Loan[]> {
+    return this.storageService.getLoans();
   }
 
   private generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
 }
-

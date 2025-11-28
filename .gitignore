@@ -41,6 +41,11 @@ testem.log
 .DS_Store
 Thumbs.db
 
+# Environment variables (sensitive data)
+.env
+.env.local
+.env.*.local
+
 # Database configuration and exports (sensitive data)
 database.config.json
 data-export.json
