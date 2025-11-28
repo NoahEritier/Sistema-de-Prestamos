@@ -1,0 +1,248 @@
+<div class="loans-container">
+  <app-header></app-header>
+  <app-toast></app-toast>
+  
+  <div class="loans-content">
+    <div class="page-header">
+      <div>
+        <h1>Gestión de Préstamos</h1>
+        <p>Administra los préstamos otorgados</p>
+      </div>
+      <button class="btn btn-primary" (click)="openModal()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Nuevo Préstamo
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Monto</th>
+              <th>Tasa Interés</th>
+              <th>Plazo</th>
+              <th>Cuota</th>
+              <th>Pendiente</th>
+              <th>Cuotas Restantes</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let loan of loans">
+              <td>{{ loan.clienteNombre }}</td>
+              <td>{{ formatCurrency(loan.monto) }}</td>
+              <td>{{ loan.tasaInteres }}%</td>
+              <td>{{ loan.cantidadCuotas }} {{ loan.tipoPlazo === 'semanal' ? 'semanas' : loan.tipoPlazo === 'quincenal' ? 'quincenas' : 'meses' }}</td>
+              <td>{{ formatCurrency(loan.cuotaMensual) }}</td>
+              <td>{{ formatCurrency(loan.montoPendiente) }}</td>
+              <td>{{ getCuotasRestantes(loan) }}</td>
+              <td>
+                <span class="badge" [ngClass]="getStatusClass(loan.estado)">
+                  {{ loan.estado }}
+                </span>
+              </td>
+              <td>
+                <div class="action-buttons">
+                  <button class="btn-icon" (click)="openDetailModal(loan)" title="Ver Detalle">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            <tr *ngIf="loans.length === 0">
+              <td colspan="9" class="text-center">No hay préstamos registrados</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Nuevo/Editar Préstamo -->
+  <div *ngIf="showModal" class="modal-overlay" (click)="closeModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>{{ editingLoan ? 'Editar Préstamo' : 'Nuevo Préstamo' }}</h2>
+      
+      <form (ngSubmit)="saveLoan()">
+        <div class="form-group">
+          <label>Cliente *</label>
+          <select [(ngModel)]="loanForm.clienteId" name="clienteId" required [disabled]="!!editingLoan">
+            <option value="">Seleccione un cliente</option>
+            <option *ngFor="let client of clients" [value]="client.id">
+              {{ client.nombre }} {{ client.apellido }} - {{ client.documento }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Monto del Préstamo *</label>
+          <input type="number" [(ngModel)]="loanForm.monto" name="monto" 
+                 (input)="calculatePayment()" required min="0" step="0.01">
+        </div>
+
+        <div class="form-group">
+          <label>Tasa de Interés Anual (%)</label>
+          <input type="number" [(ngModel)]="loanForm.tasaInteres" name="tasaInteres" 
+                 (input)="calculatePayment()" min="0" step="0.1" value="0">
+        </div>
+
+        <div class="form-group">
+          <label>Tipo de Plazo *</label>
+          <select [(ngModel)]="loanForm.tipoPlazo" name="tipoPlazo" 
+                  (change)="calculatePayment()" required>
+            <option value="semanal">Semanal</option>
+            <option value="quincenal">Quincenal</option>
+            <option value="mensual">Mensual</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Cantidad de Cuotas *</label>
+          <input type="number" [(ngModel)]="loanForm.cantidadCuotas" name="cantidadCuotas" 
+                 (input)="calculatePayment()" required min="1">
+        </div>
+
+        <div class="form-group">
+          <label>Fecha de Inicio *</label>
+          <input type="date" [(ngModel)]="loanForm.fechaInicio" name="fechaInicio" 
+                 class="styled-date-input" required>
+        </div>
+
+        <div *ngIf="loanForm.cuotaMensual" class="form-group">
+          <label>Monto de Cuota Calculada</label>
+          <input type="text" [value]="formatCurrency(loanForm.cuotaMensual)" readonly>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" (click)="closeModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Detalle Préstamo -->
+  <div *ngIf="showDetailModal && selectedLoan" class="modal-overlay" (click)="closeDetailModal()">
+    <div class="modal modal-large" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Detalle del Préstamo</h2>
+        <div class="header-actions">
+          <button class="btn btn-secondary" (click)="generateLoanReceipt()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+            </svg>
+            Generar Comprobante
+          </button>
+          <button class="btn-close" (click)="closeDetailModal()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="loan-detail">
+        <div class="detail-section">
+          <h3>Información General</h3>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <label>Cliente:</label>
+              <span>{{ selectedLoan.clienteNombre }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Monto Total:</label>
+              <span>{{ formatCurrency(selectedLoan.monto) }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Tasa de Interés:</label>
+              <span>{{ selectedLoan.tasaInteres }}% anual</span>
+            </div>
+            <div class="detail-item">
+              <label>Plazo:</label>
+              <span>{{ selectedLoan.cantidadCuotas }} {{ selectedLoan.tipoPlazo === 'semanal' ? 'semanas' : selectedLoan.tipoPlazo === 'quincenal' ? 'quincenas' : 'meses' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Estado:</label>
+              <span class="badge" [ngClass]="getStatusClass(selectedLoan.estado)">
+                {{ selectedLoan.estado }}
+              </span>
+            </div>
+            <div class="detail-item">
+              <label>Monto Pendiente:</label>
+              <span>{{ formatCurrency(selectedLoan.montoPendiente) }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Cuotas Pagadas:</label>
+              <span>{{ selectedLoan.cuotasPagadas }} / {{ selectedLoan.cuotasTotales }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Cuotas Restantes:</label>
+              <span>{{ getCuotasRestantes(selectedLoan) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <h3>Detalle de Cuotas</h3>
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>N°</th>
+                  <th>Monto</th>
+                  <th>Fecha Vencimiento</th>
+                  <th>Fecha Pago</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let cuota of (selectedLoan.cuotas || [])" 
+                    [ngClass]="{'cuota-vencida': cuota.estado === 'vencida', 'cuota-pagada': cuota.estado === 'pagada'}">
+                  <td>{{ cuota.numero }}</td>
+                  <td>{{ formatCurrency(cuota.monto) }}</td>
+                  <td>{{ cuota.fechaVencimiento | date:'short' }}</td>
+                  <td>{{ cuota.fechaPago ? (cuota.fechaPago | date:'short') : '-' }}</td>
+                  <td>
+                    <span class="badge" [ngClass]="{
+                      'badge-success': cuota.estado === 'pagada',
+                      'badge-danger': cuota.estado === 'vencida',
+                      'badge-warning': cuota.estado === 'pendiente'
+                    }">
+                      {{ cuota.estado }}
+                    </span>
+                  </td>
+                  <td>
+                    <button *ngIf="cuota.estado === 'pagada' && cuota.fechaPago" 
+                            class="btn-icon" 
+                            (click)="generatePaymentReceiptForCuota(cuota)"
+                            title="Generar Comprobante de Pago">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+                      </svg>
+                    </button>
+                    <span *ngIf="cuota.estado !== 'pagada'">-</span>
+                  </td>
+                </tr>
+                <tr *ngIf="!selectedLoan.cuotas || selectedLoan.cuotas.length === 0">
+                  <td colspan="6" class="text-center">No hay cuotas registradas</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

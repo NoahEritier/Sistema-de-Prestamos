@@ -1,0 +1,23 @@
+<header class="header">
+  <div class="header-content">
+    <div class="header-logo">
+      <h1>Sistema de Préstamos</h1>
+    </div>
+    <nav class="header-nav">
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">Dashboard</a>
+      <a routerLink="/clientes" routerLinkActive="active">Clientes</a>
+      <a routerLink="/prestamos" routerLinkActive="active">Préstamos</a>
+      <a routerLink="/pagos" routerLinkActive="active">Pagos</a>
+    </nav>
+    <div class="header-user">
+      <span class="user-name">{{ authService.getCurrentUser()?.name }}</span>
+      <button class="btn-logout" (click)="logout()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+        </svg>
+        Salir
+      </button>
+    </div>
+  </div>
+</header>
+

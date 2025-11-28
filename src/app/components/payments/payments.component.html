@@ -1,0 +1,117 @@
+<div class="payments-container">
+  <app-header></app-header>
+  <app-toast></app-toast>
+  
+  <div class="payments-content">
+    <div class="page-header">
+      <div>
+        <h1>Gestión de Pagos</h1>
+        <p>Registra y gestiona los pagos de préstamos</p>
+      </div>
+      <button class="btn btn-primary" (click)="openModal()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Registrar Pago
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Monto</th>
+              <th>Tipo</th>
+              <th>Cuota</th>
+              <th>Fecha</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let payment of payments">
+              <td>{{ payment.clienteNombre }}</td>
+              <td>{{ formatCurrency(payment.monto) }}</td>
+              <td>
+                <span class="badge badge-info">
+                  {{ getPaymentTypeLabel(payment.tipo) }}
+                </span>
+              </td>
+              <td>{{ payment.numeroCuota || '-' }}</td>
+              <td>{{ payment.fecha | date:'short' }}</td>
+              <td>
+                <button class="btn-icon" (click)="generateReceipt(payment)" title="Generar Comprobante">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+                  </svg>
+                </button>
+              </td>
+            </tr>
+            <tr *ngIf="payments.length === 0">
+              <td colspan="6" class="text-center">No hay pagos registrados</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div *ngIf="showModal" class="modal-overlay" (click)="closeModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>Registrar Pago</h2>
+      
+      <form (ngSubmit)="savePayment()">
+        <div class="form-group">
+          <label>Préstamo *</label>
+          <select [(ngModel)]="paymentForm.prestamoId" name="prestamoId" 
+                  (change)="onLoanChange()" required>
+            <option value="">Seleccione un préstamo</option>
+            <option *ngFor="let loan of loans" [value]="loan.id">
+              {{ loan.clienteNombre }} - {{ formatCurrency(loan.monto) }} 
+              (Pendiente: {{ formatCurrency(loan.montoPendiente) }})
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Tipo de Pago *</label>
+          <select [(ngModel)]="paymentForm.tipo" name="tipo" required>
+            <option value="cuota">Cuota</option>
+            <option value="abono">Abono</option>
+            <option value="pago_completo">Pago Completo</option>
+          </select>
+        </div>
+
+        <div class="form-group" *ngIf="paymentForm.tipo === 'cuota'">
+          <label>Número de Cuota</label>
+          <input type="number" [(ngModel)]="paymentForm.numeroCuota" name="numeroCuota" min="1">
+        </div>
+
+        <div class="form-group">
+          <label>Monto *</label>
+          <input type="number" [(ngModel)]="paymentForm.monto" name="monto" required min="0" step="0.01">
+        </div>
+
+        <div class="form-group">
+          <label>Fecha *</label>
+          <input type="date" [(ngModel)]="paymentForm.fecha" name="fecha" 
+                 class="styled-date-input" required>
+        </div>
+
+        <div class="form-group">
+          <label>Observaciones</label>
+          <textarea [(ngModel)]="paymentForm.observaciones" name="observaciones" rows="3"></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" (click)="closeModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Registrar Pago</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+

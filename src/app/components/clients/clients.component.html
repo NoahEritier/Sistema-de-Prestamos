@@ -1,0 +1,131 @@
+<div class="clients-container">
+  <app-header></app-header>
+  <app-toast></app-toast>
+  
+  <div class="clients-content">
+    <div class="page-header">
+      <div>
+        <h1>Gestión de Clientes</h1>
+        <p>Administra tu base de datos de clientes</p>
+      </div>
+      <button class="btn btn-primary" (click)="openModal()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Nuevo Cliente
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Documento</th>
+              <th>Teléfono</th>
+              <th>Email</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let client of clients">
+              <td>{{ client.nombre }} {{ client.apellido }}</td>
+              <td>{{ client.documento }}</td>
+              <td>{{ client.telefono }}</td>
+              <td>{{ client.email }}</td>
+              <td>
+                <span class="badge" [ngClass]="client.activo ? 'badge-success' : 'badge-danger'">
+                  {{ client.activo ? 'Activo' : 'Inactivo' }}
+                </span>
+              </td>
+              <td>
+                <div class="action-buttons">
+                  <button class="btn-icon" (click)="openModal(client)" title="Editar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button class="btn-icon btn-icon-danger" (click)="deleteClient(client.id)" title="Eliminar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            <tr *ngIf="clients.length === 0">
+              <td colspan="6" class="text-center">No hay clientes registrados</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div *ngIf="showModal" class="modal-overlay" (click)="closeModal()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>{{ editingClient ? 'Editar Cliente' : 'Nuevo Cliente' }}</h2>
+      
+      <form (ngSubmit)="saveClient()">
+        <div class="form-group">
+          <label>Nombre *</label>
+          <input type="text" [(ngModel)]="clientForm.nombre" name="nombre" required>
+        </div>
+
+        <div class="form-group">
+          <label>Apellido *</label>
+          <input type="text" [(ngModel)]="clientForm.apellido" name="apellido" required>
+        </div>
+
+        <div class="form-group">
+          <label>Documento *</label>
+          <input type="text" [(ngModel)]="clientForm.documento" name="documento" required>
+        </div>
+
+        <div class="form-group">
+          <label>Teléfono</label>
+          <input type="tel" [(ngModel)]="clientForm.telefono" name="telefono">
+        </div>
+
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" [(ngModel)]="clientForm.email" name="email">
+        </div>
+
+        <div class="form-group">
+          <label>Dirección</label>
+          <textarea [(ngModel)]="clientForm.direccion" name="direccion" rows="3"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <input type="checkbox" [(ngModel)]="clientForm.activo" name="activo">
+            Cliente Activo
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" (click)="closeModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog -->
+  <app-confirm-dialog
+    *ngIf="showConfirmDialog && clientToDelete"
+    title="Eliminar Cliente"
+    [message]="'¿Está seguro de eliminar al cliente ' + clientToDelete.nombre + ' ' + clientToDelete.apellido + '?'"
+    confirmText="Eliminar"
+    cancelText="Cancelar"
+    type="danger"
+    (confirm)="confirmDelete()"
+    (cancel)="cancelDelete()">
+  </app-confirm-dialog>
+</div>
+
